@@ -1,6 +1,7 @@
 import streamlit as st
 from main import add_task, load_tasks, update_task, delete_task
-from datetime import datetime
+from datetime import datetime, timedelta
+import pandas as pd
 
 st.set_page_config(page_title="Task Manager AI", layout="wide")
 st.title("📝 Task Manager AI")
@@ -17,6 +18,38 @@ def parse_due_date(date_input):
         except:
             continue
     return None
+
+# ==========================
+# צבע לפי תאריך יעד
+# ==========================
+def color_for_due_date(due_date_str):
+    try:
+        due_date = datetime.strptime(due_date_str, "%Y-%m-%d").date()
+        today = datetime.today().date()
+        if due_date < today:
+            return "🔴"  # Overdue
+        elif due_date <= today + timedelta(days=3):
+            return "🟠"  # Urgent
+        else:
+            return "🟢"  # Normal
+    except:
+        return "⚪"  # Unknown
+
+# ==========================
+# Suggested Status לפי תאריך
+# ==========================
+def suggested_status_by_due_date(due_date_str):
+    try:
+        due_date = datetime.strptime(due_date_str, "%Y-%m-%d").date()
+        today = datetime.today().date()
+        if due_date < today:
+            return "Overdue"
+        elif due_date <= today + timedelta(days=3):
+            return "Urgent"
+        else:
+            return "Not Urgent"
+    except:
+        return "Unknown"
 
 # ==========================
 # Session state flags
@@ -53,6 +86,22 @@ tasks = load_tasks()
 today = datetime.today().date()
 
 # ==========================
+# Search / Filter
+# ==========================
+search_term = st.text_input("🔍 Search tasks (by title or description)")
+filtered_tasks = [t for t in tasks if search_term.lower() in t['title'].lower() or search_term.lower() in t['description'].lower()]
+
+# ==========================
+# Sorting
+# ==========================
+sort_by = st.selectbox("Sort by", ["Due Date", "Status"])
+if sort_by == "Due Date":
+    filtered_tasks.sort(key=lambda x: x['due_date'])
+elif sort_by == "Status":
+    status_order = {"Urgent": 0, "Not Started": 1, "In Progress": 2, "Done": 3, "Overdue": 4}
+    filtered_tasks.sort(key=lambda x: status_order.get(x['status'], 5))
+
+# ==========================
 # Tabs
 # ==========================
 tab_all, tab_completed = st.tabs(["All Tasks", "Completed Tasks"])
@@ -63,18 +112,18 @@ tab_all, tab_completed = st.tabs(["All Tasks", "Completed Tasks"])
 with tab_all:
     st.session_state['active_tab'] = 'all'
     st.subheader("📋 All Tasks")
-    all_tasks = [t for t in tasks if t['status'] != "Done"]
+    all_tasks = [t for t in filtered_tasks if t['status'] != "Done"]
 
     if all_tasks:
         for t in all_tasks:
             task_id_obj = t['_id']
             task_str_id = str(task_id_obj)
 
-            st.markdown(f"**ID:** {task_str_id}")
-            st.markdown(f"**Title:** {t['title']}")
+            st.markdown(f"{color_for_due_date(t['due_date'])} **{t['title']}**")
             st.markdown(f"**Description:** {t['description']}")
             st.markdown(f"**Due Date:** {t['due_date']}")
             st.markdown(f"**Status:** {t['status']}")
+            st.info(f"Suggested Status: {suggested_status_by_due_date(t['due_date'])}")
 
             col1, col2, col3 = st.columns(3)
 
@@ -131,15 +180,14 @@ with tab_all:
 with tab_completed:
     st.session_state['active_tab'] = 'completed'
     st.subheader("✅ Completed Tasks")
-    completed_tasks = [t for t in tasks if t['status'] == "Done"]
+    completed_tasks = [t for t in filtered_tasks if t['status'] == "Done"]
 
     if completed_tasks:
         for t in completed_tasks:
             task_id_obj = t['_id']
             task_str_id = str(task_id_obj)
 
-            st.markdown(f"**ID:** {task_str_id}")
-            st.markdown(f"**Title:** {t['title']}")
+            st.markdown(f"{color_for_due_date(t['due_date'])} **{t['title']}**")
             st.markdown(f"**Description:** {t['description']}")
             st.markdown(f"**Due Date:** {t['due_date']}")
             st.markdown(f"**Status:** {t['status']}")
@@ -155,3 +203,10 @@ with tab_completed:
             st.markdown("---")
     else:
         st.info("No completed tasks found.")
+
+# ==========================
+# Export CSV
+# ==========================
+if filtered_tasks:
+    df = pd.DataFrame(filtered_tasks)
+    st.download_button("📥 Export Tasks CSV", df.to_csv(index=False), "tasks.csv")
